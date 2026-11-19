@@ -14,6 +14,10 @@ from nucleo import (
 )
 from almacenamiento import consultar, guardar, borrar, crear_backup
 from ejemplos import ejemplos
+from puntos import adjuntar_puntos, completar_punto
+from interfaz_puntos import mostrar_puntos, selector_punto
+from interfaz_protocolo import mostrar_protocolo
+from protocolo_campo import consultar_protocolo
 
 st.set_page_config(page_title="SIAMS · Captura y análisis", page_icon="💧", layout="wide", initial_sidebar_state="expanded")
 
@@ -167,6 +171,7 @@ with st.sidebar:
     st.caption("Base de datos guardada en este equipo")
     total_sede = sum(len(consultar(m,sede)) for m in MODULOS)
     st.metric("Registros en la sede", f"{total_sede:,}")
+    st.caption(f"Visitas del protocolo: {len(consultar_protocolo(sede))}")
     with st.expander("Conjunto de ejemplo"):
         st.caption("Datos simulados para explorar los cálculos.")
         if st.button("Incorporar ejemplo de Leticia", width="stretch"):
@@ -207,9 +212,16 @@ elif modulo == "hidroquimica":
 else:
     c4.metric("Muestras únicas",f"{df['muestra_id'].nunique() if not df.empty else 0:,}")
 
-p_reg,p_cons,p_est,p_series = st.tabs(["01  Registrar", "02  Base de datos", "03  Estadística", "04  Gráficas y series"])
+p_reg,p_cons,p_est,p_series,p_puntos,p_protocolo = st.tabs(["01  Registrar", "02  Base de datos", "03  Estadística", "04  Gráficas y series", "05  Puntos y coordenadas", "06  Protocolo de campo"])
+
+with p_protocolo:
+    mostrar_protocolo(sede)
+
+with p_puntos:
+    mostrar_puntos(sede)
 
 with p_reg:
+    punto_predeterminado = selector_punto(sede, modulo)
     titulo("Plantilla editable")
     st.caption("Escribe directamente en las celdas, añade filas con el control de la tabla o pega un bloque desde Excel. Los campos no medidos pueden quedar vacíos.")
     if modulo == "sondas":
@@ -228,7 +240,7 @@ with p_reg:
         with derecha:
             st.caption("Se guardan en la base SQLite local de este computador.")
     if guardar_presionado:
-        nuevos, errores = validar_lote(modulo,editado)
+        nuevos, errores = validar_lote(modulo,completar_punto(editado,modulo,punto_predeterminado))
         if not errores:
             try:
                 n = guardar(modulo,sede,nuevos)
@@ -287,10 +299,11 @@ with p_cons:
             vista = vista[matching]
         if modulo == "hidroquimica":
             vista = enriquecer_hidroquimica(vista)
+        st.caption("El CSV incluye la ubicación actual del catálogo cuando está disponible; no representa una nueva medición GPS en cada visita.")
         tabla_consulta(vista,modulo,["error_balance_pct","facies"] if modulo=="hidroquimica" else None,alto=445)
         iz,de = st.columns([1,1])
         with iz:
-            st.download_button("Exportar registros · CSV",data=csv_bytes(vista),file_name=f"siams_{sede}_{modulo}.csv",mime="text/csv",width="stretch")
+            st.download_button("Exportar registros · CSV",data=csv_bytes(adjuntar_puntos(vista,sede)),file_name=f"siams_{sede}_{modulo}.csv",mime="text/csv",width="stretch")
         with de:
             with st.expander("Eliminar registros seleccionados"):
                 claves = {f"#{int(row.id)} · {str(getattr(row, spec['clave']))}": int(row.id) for row in vista.itertuples(index=False)}

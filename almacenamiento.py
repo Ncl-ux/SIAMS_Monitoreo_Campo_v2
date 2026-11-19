@@ -1,5 +1,6 @@
 """Persistencia SQLite local. Los datos nunca se envían a internet desde este módulo."""
 from __future__ import annotations
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 import io
@@ -50,7 +51,7 @@ def guardar(modulo, sede, registros):
 def consultar(modulo, sede):
     if modulo not in MODULOS or sede not in SEDES:
         raise ValueError("Sede o módulo desconocido")
-    with conexion() as cx:
+    with closing(conexion()) as cx, cx:
         filas = cx.execute("SELECT id, datos, creado FROM registros WHERE sede=? AND modulo=? ORDER BY id", (sede, modulo)).fetchall()
     registros = [{"id": id_, **json.loads(raw), "creado": creado} for id_, raw, creado in filas]
     cols = ["id"] + MODULOS[modulo]["columnas"] + (["unidad"] if modulo == "sondas" else []) + ["creado"]
@@ -62,16 +63,24 @@ def borrar(modulo, sede, ids):
     ids = [int(v) for v in ids]
     if not ids:
         return 0
-    with conexion() as cx:
+    with closing(conexion()) as cx, cx:
         cur = cx.executemany("DELETE FROM registros WHERE id=? AND sede=? AND modulo=?", [(i, sede, modulo) for i in ids])
         return cur.rowcount
 
 
 def crear_backup(sede=None):
+    from protocolo_campo import consultar_protocolo, exportar_json, exportar_csv, exportar_geojson
+    from puntos import consultar_puntos
     sedes = [sede] if sede else SEDES
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for s in sedes:
+            visitas=consultar_protocolo(s)
+            carpeta=s.replace(" ", "_")
+            zf.writestr(f"{carpeta}/protocolo.json", exportar_json(visitas))
+            zf.writestr(f"{carpeta}/protocolo.csv", exportar_csv(visitas))
+            zf.writestr(f"{carpeta}/protocolo.geojson", exportar_geojson(visitas))
+            zf.writestr(f"{s.replace(' ', '_')}/puntos.csv", consultar_puntos(s).to_csv(index=False).encode("utf-8-sig"))
             for m in MODULOS:
                 df = consultar(m, s)
                 zf.writestr(f"{s.replace(' ', '_')}/{m}.csv", df.to_csv(index=False).encode("utf-8-sig"))

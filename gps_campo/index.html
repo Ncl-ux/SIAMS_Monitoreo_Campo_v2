@@ -1,0 +1,12 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><style>body{font:14px system-ui,sans-serif;margin:2px;color:inherit}button{background:#495D59;color:white;border:0;padding:9px 15px;border-radius:7px;cursor:pointer}#estado{margin-top:6px;line-height:1.3}</style></head><body><button id="gps">Obtener coordenadas GPS</button><div id="estado" role="status">Usa la ubicación del dispositivo; no requiere un servicio de mapas.</div><script>
+const send=(type,extra={})=>window.parent.postMessage({isStreamlitMessage:true,type,...extra},'*');
+const estado=document.getElementById('estado');
+const height=()=>send('streamlit:setFrameHeight',{height:Math.max(75,document.body.scrollHeight+8)});
+window.addEventListener('message',e=>{if(e.data?.type==='streamlit:render') height();});
+send('streamlit:componentReady',{apiVersion:1});height();
+document.getElementById('gps').onclick=()=>{
+ if(!window.isSecureContext||!navigator.geolocation){estado.textContent='GPS no disponible en este contexto. Usa HTTPS, localhost o ingresa las coordenadas manualmente.';height();return;}
+ estado.textContent='Buscando ubicación…';height();
+ navigator.geolocation.getCurrentPosition(p=>{const c=p.coords;estado.textContent='Ubicación recibida. Precisión horizontal: '+Math.round(c.accuracy)+' m.';height();send('streamlit:setComponentValue',{dataType:'json',value:{latitud:c.latitude,longitud:c.longitude,altitud_m:c.altitude,precision_gps_m:c.accuracy,fecha_coordenadas:new Date(p.timestamp).toISOString(),nonce:Date.now()}});},e=>{estado.textContent='No se obtuvo la ubicación: '+e.message+'. Puedes ingresar las coordenadas manualmente.';height();},{enableHighAccuracy:true,timeout:25000,maximumAge:0});
+};
+</script></body></html>
